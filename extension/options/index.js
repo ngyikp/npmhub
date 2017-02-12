@@ -1,8 +1,8 @@
 const originRegex = /https?:\/\/[^/?#]+/;
-const gheForm = document.querySelector('#gh-enterprise');
-const gheInput = document.querySelector('#gh-enterprise-domain');
+const cdForm = document.querySelector('#custom-domain');
+const cdInput = document.querySelector('#custom-domain-origin');
 
-gheForm.addEventListener('submit', e => {
+cdForm.addEventListener('submit', e => {
 	e.preventDefault();
 
 	if (!chrome.permissions) {
@@ -10,7 +10,7 @@ gheForm.addEventListener('submit', e => {
 		return;
 	}
 
-	const url = gheInput.value;
+	const url = cdInput.value;
 	const origin = url.match(originRegex);
 
 	if (origin) {
@@ -19,7 +19,7 @@ gheForm.addEventListener('submit', e => {
 			origins: origin
 		}, granted => {
 			if (granted) {
-				gheForm.reset();
+				cdForm.reset();
 			}
 		});
 	}
