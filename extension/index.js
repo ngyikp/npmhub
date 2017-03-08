@@ -1,48 +1,82 @@
-// Are we on a repo page that has a package.json?
-const packageLink = document.querySelector('.files [title="package.json"]');
+// Escape HTML
+function esc(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// Get DOM node from HTML
+function html(html) {
+  if (html.raw) {
+    // Shortcut for html`text` instead of html(`text`)
+    html = String.raw(...arguments);
+  }
+
+  const fragment = document.createRange().createContextualFragment(html.trim());
+  if (fragment.firstChild === fragment.lastChild) {
+    return fragment.firstChild;
+  }
+  return fragment;
+}
+
+const isGitLab = document.querySelector('.navbar-gitlab');
+const packageLink = document.querySelector('.files [title="package.json"], .tree-item-file-name [title="package.json"]');
 
 if (packageLink) {
-  const pkgUrl = packageLink.href;
+  const boxTemplate = document.querySelector('#readme, .readme-holder');
+  const dependenciesBox = createBox(boxTemplate, 'Dependencies');
 
-  // Set up list containers and headings
-  const $template = $('#readme').clone().empty().removeAttr('id');
+  fetch(packageLink.href, {credentials: 'include'}).then(res => res.text()).then(generateLists);
 
-  const $depsList = $("<ol class='deps markdown-body'>");
-  const $devDepsList = $("<ol class='deps markdown-body'>");
-  const $depsVisBtn = $("<button class='btn btn-sm viz-btn' style='float: right; margin: 5px 5px 0 0;' type='button'>Dependency tree visualization");
+  function generateLists(domStr) {
+    const json = html(domStr).querySelector('.blob-wrapper, .blob-content').textContent;
+    const pkg = JSON.parse(json);
+    const dependencies = Object.keys(pkg.dependencies || {});
+    const devDependencies = Object.keys(pkg.devDependencies || {});
 
-  $template.clone()
-  .append($depsVisBtn)
-  .append('<h3 id="dependencies">Dependencies', $depsList)
-  .appendTo('.repository-content');
+    addDependencies(dependenciesBox, dependencies);
 
-  $template.clone()
-  .append('<h3 id="dev-dependencies">Dev dependencies', $devDepsList)
-  .appendTo('.repository-content');
-
-  fetch(pkgUrl, { credentials: 'include' }).then(res => res.text()).then(domStr => {
-    const pkg = JSON.parse($(domStr).find('.blob-wrapper').text());
-    $depsVisBtn.wrap(`<a href="http://npm.anvaka.com/#/view/2d/${pkg.name}"></a>`);
-    addDependencies(pkg.dependencies, $depsList);
-    addDependencies(pkg.devDependencies, $devDepsList);
-  });
-
-  function addDependencies(dependencies, $list) {
-    if (!dependencies) {
-      return $list.append("<li class='empty'>None found in package.json</li>");
+    // Don't show dev dependencies if there are absolutely no dependencies
+    if (dependencies.length || devDependencies.length) {
+      addDependencies(createBox(boxTemplate, 'Dev Dependencies'), devDependencies);
     }
 
-    const depNames = Object.keys(dependencies).forEach(name => {
-      const depUrl = 'https://registry.npmjs.org/' + name
-      const $dep = $("<li><a href='https://npmjs.org/package/" + name + "'>" + name + '</a>&nbsp;</li>')
-      $dep.appendTo($list);
-      backgroundFetch(depUrl).then(dep => {
-        $dep.append(dep.description)
+    if (dependencies.length && !pkg.private) {
+      const link = html`<a class="npmhub-anvaka btn btn-sm">Dependency tree visualization`;
+      link.href = `http://npm.anvaka.com/#/view/2d/${esc(pkg.name)}`;
+      dependenciesBox.appendChild(link);
+    }
+  }
 
-        if (dep.repository) {
-          $dep.append(" <a href='http://ghub.io/" + dep.name + "'>(repo)</a>")
-        }
-      })
-    });
+  function createBox(boxTemplate, title) {
+    const containerEl = boxTemplate.cloneNode();
+    containerEl.removeAttribute('id');
+    containerEl.appendChild(isGitLab ?
+      html`<div class="file-title"><strong>${title}` :
+      html`<h3>${title}`
+    );
+    containerEl.appendChild(html`<ol class="deps markdown-body">`);
+
+    document.querySelector('.repository-content, .tree-content-holder').appendChild(containerEl);
+    return containerEl;
+  }
+
+  function addDependencies(containerEl, list) {
+    const listEl = containerEl.querySelector('.deps');
+    if (list.length) {
+      list.forEach(name => {
+        const depUrl = 'https://registry.npmjs.org/' + name;
+        const depEl = html`<li><a href='http://ghub.io/${esc(name)}'>${esc(name)}</a>&nbsp;</li>`;
+        listEl.appendChild(depEl);
+        backgroundFetch(depUrl).then(dep => {
+          depEl.appendChild(html(dep.description));
+        });
+      });
+    } else {
+      listEl.appendChild(html`<li class="empty">No dependencies! 🎉</li>`);
+    }
   }
 }
